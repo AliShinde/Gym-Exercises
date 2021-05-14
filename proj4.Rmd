@@ -1,0 +1,127 @@
+---
+title: "Practical Machine Learning"
+author: "Ali Shinde"
+date: "13/05/2021"
+output: 
+        html_document: 
+        keep_md: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Summary  
+The following report is for predicting whether a person is doing an exercise 
+properly or not by the outcome classe. The outcome is a factor variable 
+consisting of 5 levels (A,B,C,D,E). Where A level indicates that the exercise is
+done properly and the rest show that there are common mistakes. The prediction 
+is done by using random forest. The explanation for model selection can be found 
+in the relevant section of the report.  
+
+# Loading the required libraries  
+```{r message=FALSE, warning=FALSE}
+library(data.table)
+library(caret)
+library(ggplot2)
+library(randomForest)
+```
+
+# Data Description  
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks.  
+
+
+# Reading the data 
+```{r}
+url1 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(url1, destfile = "train.csv")
+url2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(url2, destfile = "test.csv")
+trainData <- read.csv("train.csv")
+testData <- read.csv("test.csv")
+```
+
+# Preprocessing and Data Cleaning  
+## Missing values
+By a first glance we can see that a lot of the columns have NA values. We will 
+eliminate all those columns which have 95% missing values since they will impact
+our model.  The first 7 columns are irrelevant to our model. The contents are 
+serial umber and timestamps which are irrelevant because we need numerical 
+values of the accelerometers rather than serial or timestamps.  
+
+```{r}
+waste <- sapply(trainData, function(x) mean(is.na(x))) > 0.95
+trainData <- trainData[,waste == FALSE]
+testData <- testData[,waste == FALSE]
+trainData <- trainData[,-c(1:7)]
+testData <- testData[,-c(1:7)]
+
+```
+## Near Zero Variance  
+We will check for near zero variance columns in the data. If found we will 
+drop that particular column. As we know that near zero variance columns may 
+make our model unstable. We would be applying the same steps for the test 
+data as well.  
+
+```{r}
+n <- nearZeroVar(trainData)
+trainData <- trainData[,-n]
+testData <- testData[,-n]
+```
+
+
+## Creating a validation dataset
+```{r}
+set.seed(12266)
+forCross <- createDataPartition(y = trainData$classe, p = 0.7, list = FALSE)
+train2 <- trainData[forCross,]
+test2 <- trainData[-forCross,]
+
+```
+# Model Selection  
+Since our main goal is to predict the way an exercise is done i.e Correct or the 
+different types of common mistakes made. Hence we have to classify the result in 
+1 of the 5 levels. The primary candidates for this task would be Decision Tree
+or Random Forest. Since Random Forest holds clear advantage over Decision Tree
+we will fit our data with random forest then tune it accordingly.  
+
+## Fitting and Tuning  
+```{r cache = TRUE}
+m2 <- randomForest(as.factor(classe) ~., data = train2)
+plot(m2)
+```
+
+From the plot we can observe that there is a plateau after approximately 150 
+or 180 trees. Hence we can reduce the number of trees from 500 to 180 just to
+get some buffer.  
+```{r}
+p2 <- predict(m2, test2)
+confusionMatrix(p2, factor(test2$classe))
+varImpPlot(m2)
+```
+The accuracy is very good for the model and since it had another subset of the
+training dataset. Also from the important variables plot we may use mtry with 
+10 predictors just to eliminate the chances of missing out on important parameters.  
+
+# Final Model
+```{r cache = TRUE}
+final_mod <- randomForest(as.factor(classe)~.,data = train2, ntree = 170, mtry = 10)
+p3 <- predict(final_mod, test2)
+conf <- confusionMatrix(p3, factor(test2$classe))
+print(conf)
+head(p3)
+```
+As we can see there is a slight improvement in the accuracy.
+
+## Out of Sample Error  
+```{r}
+oose <- 1 - conf$overall['Accuracy']
+```
+The Out of Sample Error is `r oose`
+
+# Predicting the Test data  
+Using our tuned random forest for the final prediction.  
+```{r}
+predict(final_mod, testData)
+```
+
+
